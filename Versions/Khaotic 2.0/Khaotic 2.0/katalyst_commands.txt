@@ -1,0 +1,18 @@
+=== VARIABLES ===
+set: Declares or sets a variable to a value. 
+array: Declares an array. 
+delete: Deletes the array or variable. 
+
+=== CONTROL FLOW ===
+if: If loop. 
+while: While loop. 
+
+label: Declares a label. 
+jump: Jumps to a label, does not save return address. 
+goto: Jumps to a label, saves return address. 
+return: Return the execution to the most recent address on the stack. 
+
+=== FUNCTIONS === 
+declare: Declares a function. 
+submit: The return statement, can only return/submit 1 value. 
+

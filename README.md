@@ -1,6 +1,6 @@
 # Khaotic
 <p align="center">
-  <img width="512" height="512" position alt="Khaotic Logo" src="https://github.com/user-attachments/assets/4c80fe2c-0e89-44b4-8b66-132fd36714c2" />
+  <img width="512" height="512" alt="Khaotic Logo" src="https://github.com/user-attachments/assets/f3e4ebe2-09d4-4c2c-8b37-e720f98f6db1" />
 </p>
 Khaotic is a minimalistic esoteric coding language I created originally for a high school science fair. It started as just a simple lexer and parser, but after being informed of the fair it evolved into what it is now. The final version is 945 lines of code and features: <br />
 - A full lexer and parser. Order of operations goes: PEMDASCC<br />

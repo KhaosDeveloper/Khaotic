@@ -18,6 +18,16 @@ FEATURES:
 - System/shell commands
 - External command line interface
 
+CHANGES: 
+- Combined AST
+- Combined setup and setupNoParse into lexer
+- Break character for new lines, tabs, and quotes               
+- Updated variable memory to be a dictionary for O(1)           
+- Optimized text editor, so it doesn't save on every change     (TODO)
+- QOL Changes
+
+NOTE: A lot of these changes were supposed to be in the final version 
+for the fair but since time was short I had to do what I could. 
 '''
 
 import os
@@ -31,74 +41,116 @@ import random as ran
 # == CLASSES ==
 # =============
 
-class Token: # Lexer and parser started at 1:48 PM, 1/4. Full lexer and parser done at 4:18 PM, 2/1.
+class Token:
     def __init__(self, type, value):
         self.type = type
-        self.value = value
-class Variable:
-    def __init__(self, name, value):
-        self.name = name
         self.value = value
 
 # =============
 # === LEXER ===
 # =============
 
-def fullLexer(text):
+def fullLexer(text, v_mem):
     tokens = []
-    number = ''
-    modText = text + " "
+    buffer = ''
+    text = text + " "
     x = 0
-    while x in range (len(modText)):
-        if modText[x] == '"': # TODO: Add quotes to strings using the break (\) character. Issue is Python uses the '\' character, meaning it overrides.
+    while x in range (len(text)):
+        if text[x] == ' ' and buffer == '':
             x += 1
-            while modText[x] != '"':
-                number += modText[x]
+            continue
+        elif text[x] == '"' and text[x-1] != '\\':      # BREAK CHARACTERS : CHECK FIRST
+            x += 1
+            while True:
+                if text[x] == '\\':             # Trigger break character (\)
+                    x += 1
+                    if text[x] == 'n':          # New line
+                        buffer += '\n'
+                    elif text[x] == 't':          # Tab
+                        buffer += '\t'
+                    else:
+                        buffer += text[x]
+                    x += 1
+                elif text[x] == '\"':           # Trigger string end
+                    break
+                else:
+                    buffer += text[x]
+                    x += 1
+            if buffer != '':
+                tokens.append(Token('string', buffer))
+                buffer = ''
+        elif text[x] == '@':
+            varLoop = True
+            x += 1
+            start_x = x
+            while varLoop:
+                if text[x].isalnum() or text == '_':
+                    buffer += text[x]
+                    x += 1
+                else:
+                    text = text.replace("@" + buffer, str(v_mem[buffer]))
+                    x = start_x - 1
+                    buffer = ''
+                    varLoop = False
+        elif text[x] == ':':
+            # NOTE: Avoid using .count(), as it's an O(n) algorithm that
+            # would run everytime we check the '(' or ')' counts. 
+            para_layer = 0  # Using this instead to track the nested layer we are in. 
+            start_x = x
+            x += 1
+            while text[x] != ')' or para_layer == 0:       # Should we add to buffer? True
+                if text[x] == '(': para_layer += 1
+                elif text[x] == ')': para_layer -= 1
+                buffer += text[x]
                 x += 1
-            else:
-                if number != '':
-                    tokens.append(Token('string', number))
-                number = ''
-        if modText[x].isdigit() or modText[x] == '.':
-            number += modText[x]
-        elif modText[x] == '-' and (modText[x+1].isdigit() or modText[x+1] == '.'):
-            if number == '':
-                number = '-'
+            buffer += ")"
+            stdtest = standardLib(buffer, v_mem)
+            text = text.replace(":" + buffer, str(stdtest))
+            x = start_x - 1
+            buffer = ''
+        if text[x].isdigit() or text[x] == '.':
+            buffer += text[x]
+        elif text[x] == '-' and (text[x+1].isdigit() or text[x+1] == '.'):
+            if buffer == '':
+                buffer = '-'
                 x += 1
                 continue
+            if buffer != '':        # NOTE: Fixes bug
+                tokens.append(Token('number', buffer))
+                buffer = ''
         else:
-            if number != '':
-                tokens.append(Token('number', number))
-            number = ''
-        if modText[x] in ['>', '<', '=', '!'] and modText[x + 1] == '=':
-            tokens.append(Token('operator', modText[x:x + 2]))
+            if buffer != '':
+                tokens.append(Token('number', buffer))
+            buffer = ''
+        if text[x] in ['>', '<', '=', '!'] and text[x + 1] == '=':
+            tokens.append(Token('operator', text[x:x + 2]))
             x += 1
-        elif modText[x] in ['>', '<', '=']:
-            tokens.append(Token('operator', modText[x]))
-        elif modText[x:x + 2] == '**':
+        elif text[x] in ['>', '<', '=']:
+            tokens.append(Token('operator', text[x]))
+        elif text[x:x + 2] == '**':
             tokens.append(Token('operator', '**'))
             x += 1
-        elif modText[x] in ['+', '-', '*', '/', '%']:
-            tokens.append(Token('operator', modText[x]))
-        elif modText[x:x + 3] == 'and':
+        elif text[x] in ['+', '-', '*', '/', '%']:
+            tokens.append(Token('operator', text[x]))
+        elif text[x:x + 3] == 'and':
             x += 2
             tokens.append(Token('condition', 'and'))
-        elif modText[x:x + 2] == 'or':
+        elif text[x:x + 2] == 'or':
             tokens.append(Token('condition', 'or'))
             x += 1
-        elif modText[x:x + 3] == 'not':
+        elif text[x:x + 3] == 'not':
             tokens.append(Token('condition', 'not'))
             x += 2
-        elif modText[x:x + 4] == 'True':
+        elif text[x:x + 4] == 'True':
             tokens.append(Token('boolean', True))
             x += 3
-        elif modText[x:x + 5] == 'False':
+        elif text[x:x + 5] == 'False':
             tokens.append(Token('boolean', False))
             x += 4
-        elif modText[x] == '(':
-            tokens.append(Token('leftPara', modText[x]))
-        elif modText[x] == ')':
-            tokens.append(Token('rightPara', modText[x]))
+        elif text[x] == '(':
+            tokens.append(Token('leftPara', text[x]))
+        elif text[x] == ')':
+            tokens.append(Token('rightPara', text[x]))
         x += 1 # Increment
     return tokens
 
@@ -235,27 +287,32 @@ def fullParser(tokens):
 # === STANDARD LIBRARY ===
 # ========================
 
-def standardLib(text):
+# NOTE: This whole standard library is quite bad and needs to be re-done, but at
+# the moment, it works so I will take it. I'd eventually like to do something where
+# the lexer actually submits the function name and args as a list, this way the string
+# only gets looped through once. This would require heavy lexer modification however. 
+
+def standardLib(text, v_mem):
   def absoluteValue(a):
-    a = str(setup(a))
+    a = str(setup(a, v_mem))
     b = a + '/' + '-1'
-    if setup(a + '>=' + '0'):
+    if setup(a + '>=' + '0', v_mem):
       return a
     else:
-      return setup(b)
+      return setup(b, v_mem)
   def round(a):
-    a = str(setup(a))
-    b = setup(a + '%' + '1')
-    if setup(str(b) + '<' + '0.5'):
-      return setup(a + '-' + str(b))
+    a = str(setup(a, v_mem))
+    b = setup(a + '%' + '1', v_mem)
+    if setup(str(b) + '<' + '0.5', v_mem):
+      return setup(a + '-' + str(b), v_mem)
     else:
-      return setup(a + '+' + '('+ '1' + '-' + str(b) + ')')
+      return setup(a + '+' + '('+ '1' + '-' + str(b) + ')', v_mem)
   def getChar(args):  # (string[index])
-    str = setup(args[0 : args.rfind('[')])
-    index = setup(args[args.rfind('[') + 1:args.rfind(']')])
+    str = setup(args[0 : args.rfind('[')], v_mem)
+    index = setup(args[args.rfind('[') + 1:args.rfind(']')], v_mem)
     return '"' + str[int(float(index))] + '"'
   def setChar(args):  # (string[index], char)
-    tokens = setup(args + ')', parse=False)
+    tokens = setup(args + ')', v_mem, parse=False)
     string = tokens[0].value   # args[args.find('"') + 1 : args.find('"', args.find('"') + 1)]
     index = tokens[1].value    # args[args.find('[', args.find('"', args.find('"') + 1)) + 1 : args.find(']', args.find('[', args.find('"', args.find('"') + 1)) + 1)]
     char = tokens[2].value     # args[-1]
@@ -267,19 +324,19 @@ def standardLib(text):
             string2 += string[x]
     return '"' + string2 + '"'
   def getLen(args):
-    s = str(setup(args))
+    s = str(setup(args, v_mem))
     x = 0
     for char in s:
         x += 1
     return x
   def fileLines(args):
-      tokens = setup(args, parse=False)
+      tokens = setup(args, v_mem, parse=False)
       file = tokens[0].value
       with open(file, 'r') as f:
           lines = f.readlines()
       return len(lines)
   def readFile(args):  # ("file.txt[index]") FILE NEEDS QUOTES AROUND IT
-      tokens = setup(args, parse=False)
+      tokens = setup(args, v_mem, parse=False)
       file = tokens[0].value
       index = tokens[1].value
       with open(file, 'r') as f:
@@ -288,7 +345,7 @@ def standardLib(text):
       string = string.replace("\n", "")
       return string
   def writeFile(args):  # ("file.txt"[index], "Text") FILE NEEDS QUOTES AROUND IT.
-      tokens = setup(args, parse=False)
+      tokens = setup(args, v_mem, parse=False)
       file = tokens[0].value
       index = tokens[1].value
       text = tokens[2].value
@@ -300,12 +357,12 @@ def standardLib(text):
         f.writelines(lines)
       return
   def delay(args):
-      tokens = setup(args, parse=False)
+      tokens = setup(args, v_mem, parse=False)
       wait = tokens[0].value
       time.sleep(float(wait))
       return
   def random(args):
-      tokens = setup(args, parse=False)
+      tokens = setup(args, v_mem, parse=False)
       min = tokens[0].value
       max = tokens[1].value
       return ran.randrange(int(min), int(max))
@@ -338,46 +395,8 @@ def standardLib(text):
 # === FUNCTIONS ===
 # =================
 
-def setup(text, parse=True):
-    a = 0
-    b = 0
-    inString = False
-    text = ' ' + text + ' '
-    while a in range(len(text)):
-        while text[a] == '@' and not inString:
-            while text[b] in ['=', '!', '>', '<', 'and', 'or', 'not', '+', '-', '*', '/', '%', '(', ')', ' ']:
-                varName = text[a+1:b]
-                varValue = searchVar(varName)
-                if varValue == True or varValue == False:
-                    text = text[0:a] + str(varValue) + text[b:]
-                elif not all(char.isdigit() or char == '.' for char in str(varValue)) and varValue is not True or False:
-                    text = text[0:a] + '"' + str(varValue) + '"' + text[b:]
-                else:
-                    text = text[0:a] + str(varValue) + text[b:]
-                b = a
-            else:
-                if b == len(text) - 1:
-                    varName = text[a+1:]
-                    varValue = searchVar(varName)
-                    if varValue == True or varValue == False:
-                        text = text[0:a] + str(varValue) + text[b+1:]
-                    elif not all(char.isdigit() or char == '.' for char in str(varValue)) and varValue is not True or False:
-                        text = text[0:a] + '"' + str(varValue) + '"' + text[b+1:]
-                    else:
-                        text = text[0:a] + str(varValue) + text[b+1:]
-                    b = a
-                else:
-                    b += 1
-        while text[a] == ':' and not inString:
-          b += 1
-          if text[b] == ')':
-            text = text[0:a] + str(standardLib(text[a+1:b+1])) + text[b+1:]
-        else:
-            if text[a] == '"':
-                inString = not inString
-            a += 1
-            b = a
-    tokens = fullLexer(text)
+def setup(text, v_mem, parse=True):     # TODO: Scrap this shit
+    tokens = fullLexer(text, v_mem)     # (eventually, right now just use it for lexing/parsing)
     if len(tokens) == 1:
       return tokens[0].value
     elif parse == False:
@@ -386,11 +405,6 @@ def setup(text, parse=True):
       result = fullParser(tokens)
       return result
 
-def searchVar(varName): # Searches by name and returns the value
-    for i in range(len(variableMemory)):
-      if variableMemory[i].name == varName:
-          return variableMemory[i].value
-
 def forceExit():
     exit()
 
@@ -398,7 +412,7 @@ def forceExit():
 # === AST ===
 # ===========
 
-def AST(loop, name=""):
+def AST(loop, v_mem, name=""):
     running = True
     lastAddress = 0
     ifCheck = False
@@ -447,7 +461,7 @@ SYSTEM COMMANDS:
         else:
             file = open(name,"r")
             program = file.read().replace('\n', '')
-        variableMemory = []
+        variableMemory = v_mem
         returnAddrs = []
         commands = program.split(';')
         x = 0
@@ -463,27 +477,23 @@ SYSTEM COMMANDS:
                 continue
             if commands[x][0] == '^':  # Printing
                 if commands[x][1] == '^':  # Print new line
-                    print(setup(commands[x][2:]))
+                    print(setup(commands[x][2:], variableMemory))
                 else:
-                    print(setup(commands[x][1:]), end='')
+                    print(setup(commands[x][1:], variableMemory), end='')
             elif commands[x][0] == '@':  # Declaring variables
                 y = commands[x].find('=')
                 varName = commands[x][1:y]
                 varName = varName.replace(" ", "")
                 varValue = commands[x][y+1:]
-                varValue = setup(varValue)
-                for v in range(len(variableMemory)):
-                    if variableMemory[v].name == varName:
-                        variableMemory.pop(v)
-                        break
-                variableMemory.insert(0, Variable(varName, varValue))
+                varValue = setup(varValue, variableMemory)
+                variableMemory[varName] = varValue
             elif commands[x][0] == 'v':  # Getting input, destination specified
                 varName = commands[x][2:]
                 for v in range(len(variableMemory)):
                     if variableMemory[v].name == varName:
                         variableMemory.pop(v)
                         break
-                variableMemory.insert(0, Variable(varName, input()))
+                variableMemory[varName] = input()
             elif commands[x][0] == '>': # Go to a label
                 destination = commands[x][1:]
                 if destination  == 'return': # Return check
@@ -509,7 +519,7 @@ SYSTEM COMMANDS:
                 eCond = commands[x].rfind('{') - 1
                 cond = commands[x][sCond + 1:eCond]
                 dest = commands[x][eCond + 2:-1]
-                if setup(cond):
+                if setup(cond, variableMemory):
                     ifCheck = True
                     commands.insert(x + 1, dest)
                     lastAddress = x
@@ -608,6 +618,9 @@ SYSTEM COMMANDS:
                         elif commands[i][0] == ':':
                             keyword = 'Standard Function'
                             argument = commands[i][1:]
+                        else:
+                            keyword = 'Unknown Command'
+                            argument = commands[i][1:]
                         print(i, ':', commands[i], ':', keyword, ':' ,argument)
                     commands = []
             if ifCheck:
@@ -626,7 +639,7 @@ SYSTEM COMMANDS:
 # ==================
 
 running = True
-variableMemory = []
+variableMemory = {}
 returnAddrs = []
 def launch():
     print("Launching Khaotic...")
@@ -649,9 +662,11 @@ def main():
     elif args.version:
         version()
     elif args.run:
-        AST(False, name=args.run)
+        AST(False, variableMemory, name=args.run)
     else:
         print("Invalid command. Use --help for more info.")
+        # DEBUG
+        AST(False, variableMemory, name="Versions/test_file.kha")
         sys.exit()
 
 if __name__ == "__main__":

@@ -699,6 +699,7 @@ def main():
         run(args.run)
     else:
         print("Invalid command. Use --help for more info.")
+        run("Versions/test_file.kha")
         sys.exit()
 
 if __name__ == "__main__":

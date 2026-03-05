@@ -1,0 +1,20 @@
+<start;
+^"To term?: ";v@terms;
+@n1=0;
+@n2=1;
+@nth=0;
+@count=0;
+^"Count: ";^"Number\n";
+
+<loop;
+^@count;^": ";^@n1;^"\n";
+@nth=(@n1 + @n2);
+@n1=@n2;
+@n2=@nth;
+@count=(@count + 1);
+?(@count>@terms){>end};
+>loop;
+
+<end;
+^"Finished. ";
+!q;

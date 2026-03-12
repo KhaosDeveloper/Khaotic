@@ -24,6 +24,8 @@ CHANGES:
 - Break character for new lines, tabs, and quotes               
 - Updated variable memory to be a dictionary for O(1)           
 - Removed text editor
+- Better label saving
+- Standard library now changed, functions are define via python and submitted via a function. 
 - QOL Changes
 
 NOTE: A lot of these changes were supposed to be in the final version 
@@ -104,7 +106,7 @@ def fullLexer(text, v_mem):
                 buffer += text[x]
                 x += 1
             buffer += ")"
-            stdtest = standardLib(buffer, v_mem)
+            stdtest = function_call(buffer, v_mem)
             text = text.replace(":" + buffer, str(stdtest))
             x = start_x - 1
             buffer = ''
@@ -151,6 +153,8 @@ def fullLexer(text, v_mem):
             tokens.append(Token('leftPara', text[x]))
         elif text[x] == ')':
             tokens.append(Token('rightPara', text[x]))
+        elif text[x] == ',':
+            tokens.append(Token('delimiter', text[x]))
         x += 1 # Increment
     return tokens
 
@@ -295,116 +299,34 @@ def throw_error(line_num, message):
     print(header + "\x1b[0m" + message)
     forceExit()
 
-# ========================
-# === STANDARD LIBRARY ===
-# ========================
+# =========================
+# === FUNCTION HANDLING ===
+# =========================
 
-# NOTE: This whole standard library is quite bad and needs to be re-done, but at
-# the moment, it works so I will take it. I'd eventually like to do something where
-# the lexer actually submits the function name and args as a list, this way the string
-# only gets looped through once. This would require heavy lexer modification however. 
-
-def standardLib(text, v_mem):
-  def absoluteValue(a):
-    a = str(setup(a, v_mem))
-    b = a + '/' + '-1'
-    if setup(a + '>=' + '0', v_mem):
-      return a
-    else:
-      return setup(b, v_mem)
-  def round(a):
-    a = str(setup(a, v_mem))
-    b = setup(a + '%' + '1', v_mem)
-    if setup(str(b) + '<' + '0.5', v_mem):
-      return setup(a + '-' + str(b), v_mem)
-    else:
-      return setup(a + '+' + '('+ '1' + '-' + str(b) + ')', v_mem)
-  def getChar(args):  # (string[index])
-    str = setup(args[0 : args.rfind('[')], v_mem)
-    index = setup(args[args.rfind('[') + 1:args.rfind(']')], v_mem)
-    return '"' + str[int(float(index))] + '"'
-  def setChar(args):  # (string[index], char)
-    tokens = setup(args + ')', v_mem, parse=False)
-    string = tokens[0].value   # args[args.find('"') + 1 : args.find('"', args.find('"') + 1)]
-    index = tokens[1].value    # args[args.find('[', args.find('"', args.find('"') + 1)) + 1 : args.find(']', args.find('[', args.find('"', args.find('"') + 1)) + 1)]
-    char = tokens[2].value     # args[-1]
-    string2 = ''
-    for x in range(len(string)):   # NOTE: Strings are immutable in python, which may be quite possibly the dumbest thing I've ever heard.
-        if x == int(index):
-            string2 += char
+def split_tokens(tokens):
+    result = []
+    current = []
+    for t in tokens:
+        if t.type == 'delimiter':
+            result.append(current)
+            current = []
         else:
-            string2 += string[x]
-    return '"' + string2 + '"'
-  def getLen(args):
-    s = str(setup(args, v_mem))
-    x = 0
-    for char in s:
-        x += 1
-    return x
-  def fileLines(args):
-      tokens = setup(args, v_mem, parse=False)
-      file = tokens[0].value
-      with open(file, 'r') as f:
-          lines = f.readlines()
-      return len(lines)
-  def readFile(args):  # ("file.txt[index]") FILE NEEDS QUOTES AROUND IT
-      tokens = setup(args, v_mem, parse=False)
-      file = tokens[0].value
-      index = tokens[1].value
-      with open(file, 'r') as f:
-          lines = f.readlines()
-      string = '"' + lines[int(index) - 1] + '"'
-      string = string.replace("\n", "")
-      return string
-  def writeFile(args):  # ("file.txt"[index], "Text") FILE NEEDS QUOTES AROUND IT.
-      tokens = setup(args, v_mem, parse=False)
-      file = tokens[0].value
-      index = tokens[1].value
-      text = tokens[2].value
-      with open(file, 'r') as f:
-        lines = f.readlines()
-      del lines[int(index) - 1]
-      lines.insert(int(index) - 1, text + '\n')
-      with open(file, 'w') as f:
-        f.writelines(lines)
-      return
-  def delay(args):
-      tokens = setup(args, v_mem, parse=False)
-      wait = tokens[0].value
-      time.sleep(float(wait))
-      return
-  def random(args):
-      tokens = setup(args, v_mem, parse=False)
-      min = tokens[0].value
-      max = tokens[1].value
-      return ran.randrange(int(min), int(max))
+            current.append(t)
+    result.append(current)
+    return result
 
-  start = text.find('(')
-  end = text.rfind(')')
-  args = text[start + 1:end]
-  if text[0:start] == 'abs':
-    return absoluteValue(args)
-  elif text[0:start] == 'round':
-    return round(args)
-  elif text[0:start] == 'getChar':
-    return getChar(args)
-  elif text[0:start] == 'setChar':
-    return setChar(args)
-  elif text[0:start] == 'getLen':
-    return getLen(args)
-  elif text[0:start] == 'fileLines':
-    return fileLines(args)
-  elif text[0:start] == 'readFile':
-    return readFile(args)
-  elif text[0:start] == 'writeFile':
-    return writeFile(args)
-  elif text[0:start] == 'delay':
-    return delay(args)
-  elif text[0:start] == 'random':
-    return random(args)
+# PROCESS: example: ' :draw("Hello", 30, 50) '. 
+# 1. Setup lexes everything recursivly, returns [ "Hello" , 30 , 50 , ]. 
+# 2. Split tokens into args[] via "split_tokens", 
+# 3. Parse every individual arg by directly calling parser. 
+# 4. Search function dictionary for function code to execute. 
+
+def function_call(text):
+    pass
+
 
 # =================
-# === FUNCTIONS ===
+# === UTILITIES ===
 # =================
 
 def setup(text, v_mem, parse=True):     # TODO: Scrap this shit
@@ -428,6 +350,7 @@ def AST(loop, v_mem, name=""):
     running = True
     lastAddress = 0
     ifCheck = False
+    savedLabels = {}
     khaotic = '''====================
 === KHAOTIC V2.0 ===
 ====================
@@ -485,6 +408,8 @@ SYSTEM COMMANDS:
         commands.append("exit")
         while x in range(len(commands) - 1):
             if commands[x][0] == '<':
+                if not (commands[x][1:] in savedLabels):
+                    savedLabels[1:] = x
                 x += 1
                 continue
             if commands[x][0] == '^':  # Printing
@@ -511,14 +436,17 @@ SYSTEM COMMANDS:
                 if destination  == 'return': # Return check
                     x = returnAddrs.pop(-1)
                 else:
-                    for z in range(len(commands)-1):
-                        if commands[z][0] == '<':
-                            varName = commands[z][1:]
-                            if varName == destination:
-                                returnAddrs.append(x)
-                                lastAddress = x
-                                x = z + 1
-                                break
+                    if destination in savedLabels:
+                        x = savedLabels[destination]
+                    else: 
+                        for z in range(len(commands)-1):
+                            if commands[z][0] == '<':
+                                varName = commands[z][1:]
+                                if varName == destination:
+                                    returnAddrs.append(x)
+                                    lastAddress = x
+                                    x = z + 1
+                                    break
                     if ifCheck:
                         commands.pop(lastAddress)
                         ifCheck = False
